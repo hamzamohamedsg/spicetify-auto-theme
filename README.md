@@ -1,42 +1,62 @@
-# Spicetify Auto Theme Switcher 🌗
-
-![Auto Theme Switcher](preview.png)
-
-A lightweight, universal [Spicetify](https://spicetify.app/) extension that automatically switches your Spotify theme between dark and light color schemes based on your system appearance (macOS, Windows, or Linux) or a custom schedule.
-
----
-
-## ✨ Features
-
-- **🌐 Truly Universal**: Works with **any Spicetify theme**—whether installed from the Marketplace, Spicetify Themes repository, or locally custom-built.
-- **⚡ Sub-500ms Instant Switching**: Responds immediately when your system switches between dark and light appearance.
-- **🎵 Zero Playback Interruption**: Updates colors dynamically in-place via DOM CSS custom properties (`--spice-*` and `--spice-rgb-*`). No Spotify reloads, page refreshes, or audio pauses.
-- **🔘 Top Bar Quick Access & Toggle**: Adds a dedicated theme icon button directly to Spotify's top navigation bar for 1-click settings and quick toggling.
-- **⚙️ In-App Settings UI**:
-  - Automatically detects your currently active theme.
-  - Lists all available color schemes in selectable dropdowns.
-  - Allows freely choosing or typing **any custom scheme name**.
-  - Remembers dark and light preferences **per theme**.
-  - Supports **System Appearance**, **Day/Night Schedule**, and **Custom Hours** modes.
-- **🪶 Zero-Overhead**: Passive event-driven listener on macOS and Chromium media queries on Windows/Linux with 0% CPU consumption.
+<p align="center">
+  <h1 align="center">Auto Theme Switcher</h1>
+  <p align="center">
+    <strong>Automatic dark and light mode for Spotify. Sub-second switching with zero playback interruption.</strong>
+  </p>
+  <p align="center">
+    <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
+    <img src="https://img.shields.io/badge/Spicetify-Extension-1DB954.svg?logo=spotify" alt="Spicetify">
+    <img src="https://img.shields.io/badge/macOS-12.0+-black.svg?logo=apple" alt="macOS 12.0+">
+    <img src="https://img.shields.io/badge/Windows%20%2F%20Linux-Supported-blue.svg" alt="Cross Platform">
+    <img src="https://img.shields.io/badge/Latency-%3C500ms-success.svg" alt="Sub-500ms Latency">
+  </p>
+</p>
 
 ---
 
-## 🛒 Installation via Spicetify Marketplace
+<p align="center">
+  <img src="preview.png" width="100%" alt="Auto Theme Switcher Preview">
+</p>
 
-Once indexed in Marketplace:
-1. Open Spotify and navigate to **Marketplace** (shopping bag icon).
+---
+
+Spotify runs in permanent dark mode and offers no native option to follow your system appearance. Even with custom Spicetify themes that include light color schemes, toggling between day and night usually requires manually editing configuration files or reloading the client.
+
+**Auto Theme Switcher** bridges your operating system's appearance with Spotify. The instant your system changes appearance, Spotify adapts seamlessly in real time.
+
+No Spotify reloads. No audio playback interruptions. Under 500ms response time.
+
+---
+
+## ⚡ Features
+
+- **Instant OS Synchronization**: Detects macOS, Windows, and Linux appearance changes and updates the active scheme in under 500ms.
+- **Zero Playback Interruption**: Updates colors dynamically in-place via CSS custom properties (`--spice-*`). Music playback is never paused or interrupted.
+- **Universal Theme Support**: Compatible with any Spicetify theme—Marketplace themes, community themes, or custom local themes.
+- **Built-in Schedule Modes**:
+  - **System**: Automatically matches live macOS/OS dark and light mode.
+  - **Schedule**: Switches to light scheme during daytime (07:00–19:00) and dark scheme at night.
+  - **Custom Hours**: Set your own exact transition hours.
+- **Clean In-App Settings**: Dedicated top-bar button (`🌓`) and profile menu entry to configure scheme mappings per theme.
+- **Top Bar Quick Toggle**: Click the top bar button to instantly flip between dark and light schemes on the fly.
+- **Zero Battery / CPU Drain**: Uses passive macOS system notifications and Chromium media queries. Idles at 0.0% CPU.
+
+---
+
+## 📥 Installation
+
+### Option 1: Spicetify Marketplace (Recommended)
+
+1. Open Spotify and click **Marketplace** in the sidebar.
 2. Go to the **Extensions** tab.
 3. Search for **Auto Theme Switcher**.
 4. Click **Install**.
 
 ---
 
-## 🚀 Manual / CLI Installation
+### Option 2: Automated Installer (macOS & Linux)
 
-### Automated Installer (macOS & Linux)
-
-Clone the repository and run the install script:
+Run the one-line installer from your terminal:
 
 ```bash
 git clone https://github.com/hamzamohamedsg/spicetify-auto-theme.git
@@ -44,13 +64,15 @@ cd spicetify-auto-theme
 ./install.sh
 ```
 
-### Manual Installation
+---
 
-1. Copy `auto-theme.js` to your Spicetify Extensions directory:
+### Option 3: Manual Installation
+
+1. Copy `auto-theme.js` into your Spicetify Extensions directory:
    - **macOS / Linux**: `~/.config/spicetify/Extensions/auto-theme.js`
    - **Windows**: `%appdata%\spicetify\Extensions\auto-theme.js`
 
-2. Enable the extension in Spicetify:
+2. Enable the extension and apply:
    ```bash
    spicetify config extensions auto-theme.js
    spicetify apply
@@ -58,24 +80,20 @@ cd spicetify-auto-theme
 
 ---
 
-## 🛠️ Usage & Configuration
+## ⚙️ Configuration
 
-1. Open **Spotify**.
-2. Click the **Auto Theme button (contrast circle icon)** in the top navigation bar (or choose **Auto Theme Settings** from your profile menu).
-3. In the settings dialog:
-   - View your currently active theme.
-   - Choose your preferred **Dark Mode Color Scheme** (e.g., `Base`, `Dark`, `Mocha`).
-   - Choose your preferred **Light Mode Color Scheme** (e.g., `Orange`, `Light`, `Latte`).
-   - Select your mode: **System Appearance (Live macOS/OS)**, **Sun Schedule (Day / Night)**, or **Custom Hours**.
-   - Toggle **Enable Automatic Switching** on or off.
-4. Click **Save & Apply**.
-5. Switch your OS appearance in System Settings or let the schedule run—Spotify will adapt seamlessly!
+1. In Spotify, click the **contrast circle icon (`🌓`)** in the top navigation bar (or select **Auto Theme Settings** from your profile menu).
+2. Choose your preferred:
+   - **Dark Scheme**: e.g., `Base`, `Dark`, `Mocha`
+   - **Light Scheme**: e.g., `Orange`, `Light`, `Latte`
+   - **Switching Mode**: System, Schedule, or Custom Hours
+3. Click **Save & Apply**.
 
 ---
 
 ## 🧪 Testing
 
-The repository includes a comprehensive test suite covering INI parsing, color conversion, state management, modal generation, and live event integration:
+The repository includes a comprehensive unit and integration test suite:
 
 ```bash
 npm test
@@ -85,4 +103,4 @@ npm test
 
 ## 📄 License
 
-[MIT](LICENSE)
+Auto Theme Switcher is open-source software licensed under the [MIT License](LICENSE).
