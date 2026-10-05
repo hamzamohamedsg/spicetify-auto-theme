@@ -190,7 +190,7 @@
   }
 
   // ==========================================
-  // 3. Settings UI Modal
+  // 3. Bulletproof Settings UI Modal
   // ==========================================
 
   function generateModalHTML({ themeName, schemes, settings }) {
@@ -202,11 +202,11 @@
     const isChecked = settings.enabled ? " checked" : "";
 
     return `
-<div class="auto-theme-modal-container" style="display:flex; flex-direction:column; gap:20px; padding:10px 0; color:var(--spice-text, #ffffff); font-family:var(--font-family, sans-serif);">
+<div class="auto-theme-modal-container" style="display:flex; flex-direction:column; gap:20px; color:var(--spice-text, #ffffff); font-family:var(--font-family, sans-serif);">
   <div style="border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:12px;">
-    <h2 style="font-size:22px; font-weight:700; margin:0 0 6px 0;">Auto Theme Settings</h2>
+    <h2 style="font-size:20px; font-weight:700; margin:0 0 4px 0;">Auto Theme Settings</h2>
     <p style="font-size:13px; color:var(--spice-subtext, #a7a7a7); margin:0;">
-      Automatically synchronize Spotify's colors with your system Dark / Light mode.
+      Automatically switch between dark and light color schemes based on your system appearance.
     </p>
     <div style="margin-top:8px; font-size:13px; opacity:0.9;">
       Active Theme: <strong style="color:var(--spice-button, #1db954);">${themeName || "Default"}</strong>
@@ -264,20 +264,76 @@
   }
 
   function openSettingsModal({ themeName, schemes, currentSettings, onSave }) {
-    if (typeof Spicetify === "undefined" || !Spicetify.PopupModal) return;
+    if (typeof document === "undefined") return;
 
-    const container = document.createElement("div");
-    container.innerHTML = generateModalHTML({
-      themeName,
-      schemes,
-      settings: currentSettings
+    // Remove any existing modal
+    const existing = document.getElementById("spicetify-auto-theme-modal");
+    if (existing) existing.remove();
+
+    // Create fixed overlay
+    const overlay = document.createElement("div");
+    overlay.id = "spicetify-auto-theme-modal";
+    overlay.style.cssText = `
+      position: fixed !important;
+      top: 0 !important;
+      left: 0 !important;
+      width: 100vw !important;
+      height: 100vh !important;
+      z-index: 999999 !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      background: rgba(0, 0, 0, 0.75) !important;
+      backdrop-filter: blur(6px) !important;
+      font-family: var(--font-family, sans-serif) !important;
+    `;
+
+    // Create card
+    const card = document.createElement("div");
+    card.style.cssText = `
+      background: var(--spice-player, var(--background-elevated-base, #181818)) !important;
+      color: var(--spice-text, #ffffff) !important;
+      width: 520px !important;
+      max-width: 90vw !important;
+      max-height: 85vh !important;
+      border-radius: 12px !important;
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.8) !important;
+      border: 1px solid rgba(255, 255, 255, 0.12) !important;
+      display: flex !important;
+      flex-direction: column !important;
+      position: relative !important;
+      padding: 24px !important;
+      box-sizing: border-box !important;
+    `;
+
+    card.innerHTML = `
+      <div style="display:flex; justify-content:flex-end; margin-bottom:-20px; z-index:1;">
+        <button id="auto-theme-close-btn" style="background:transparent; border:none; color:var(--spice-subtext, #a7a7a7); cursor:pointer; font-size:18px; line-height:1; padding:6px; border-radius:50%;">✕</button>
+      </div>
+      ${generateModalHTML({ themeName, schemes, settings: currentSettings })}
+    `;
+
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+
+    const closeModal = () => overlay.remove();
+    card.querySelector("#auto-theme-close-btn")?.addEventListener("click", closeModal);
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) closeModal();
     });
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") {
+        closeModal();
+        document.removeEventListener("keydown", onKeyDown);
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
 
-    const enabledInput = container.querySelector("#auto-theme-enabled");
-    const darkInput = container.querySelector("#auto-theme-dark-scheme");
-    const lightInput = container.querySelector("#auto-theme-light-scheme");
-    const saveBtn = container.querySelector("#auto-theme-save-btn");
-    const slider = container.querySelector(".auto-theme-slider");
+    const enabledInput = card.querySelector("#auto-theme-enabled");
+    const darkInput = card.querySelector("#auto-theme-dark-scheme");
+    const lightInput = card.querySelector("#auto-theme-light-scheme");
+    const saveBtn = card.querySelector("#auto-theme-save-btn");
+    const slider = card.querySelector(".auto-theme-slider");
 
     if (enabledInput && slider) {
       enabledInput.addEventListener("change", () => {
@@ -299,18 +355,12 @@
           onSave(newSettings);
         }
 
-        Spicetify.PopupModal.hide();
-        if (Spicetify.showNotification) {
+        closeModal();
+        if (typeof Spicetify !== "undefined" && Spicetify.showNotification) {
           Spicetify.showNotification(`Auto Theme: Settings saved for ${themeName || "theme"}`);
         }
       });
     }
-
-    Spicetify.PopupModal.display({
-      title: "Spicetify Auto-Theme",
-      content: container,
-      isLarge: false
-    });
   }
 
   // ==========================================
@@ -368,34 +418,22 @@
       return null;
     }
 
-    async function resolveThemeData(themeName) {
-      let themeData = getAvailableSchemes(storage, getMarketplaceExport(), themeName);
-      if (themeData && themeData.schemes && Object.keys(themeData.schemes).length > 0) {
-        return themeData;
-      }
-
-      if (themeName && themeName !== "marketplace" && themeName !== "Default") {
-        try {
-          const res = await fetch(`https://raw.githubusercontent.com/spicetify/spicetify-themes/master/${themeName}/color.ini`);
-          if (res && res.ok) {
-            const text = await res.text();
-            const parsed = parseColorIni(text);
-            if (parsed && Object.keys(parsed).length > 0) {
-              storage.setItem(`spicetify-auto-theme-schemes:${themeName}`, JSON.stringify(parsed));
-              return {
-                themeName,
-                schemes: parsed,
-                activeScheme: Object.keys(parsed)[0],
-                rawRecordKey: `spicetify-auto-theme-schemes:${themeName}`
-              };
-            }
+    async function fetchRemoteSchemes(themeName) {
+      if (!themeName || themeName === "marketplace" || themeName === "Default") return null;
+      try {
+        const res = await fetch(`https://raw.githubusercontent.com/spicetify/spicetify-themes/master/${themeName}/color.ini`);
+        if (res && res.ok) {
+          const text = await res.text();
+          const parsed = parseColorIni(text);
+          if (parsed && Object.keys(parsed).length > 0) {
+            storage.setItem(`spicetify-auto-theme-schemes:${themeName}`, JSON.stringify(parsed));
+            return parsed;
           }
-        } catch (err) {
-          console.debug(`[Auto-Theme] Remote color.ini fetch skipped for ${themeName}:`, err.message);
         }
+      } catch (err) {
+        console.debug(`[Auto-Theme] Remote color.ini fetch skipped for ${themeName}:`, err.message);
       }
-
-      return themeData;
+      return null;
     }
 
     function applyScheme(schemeName, schemeColors, rawRecordKey) {
@@ -436,18 +474,24 @@
       console.log(`[Auto-Theme] Switched color scheme to: ${schemeName}`);
     }
 
-    async function evaluateAndApply(overrideIsDark) {
+    function evaluateAndApply(overrideIsDark) {
       if (!settings.enabled) return;
 
       const currentTheme = getCurrentThemeName();
-      const themeData = await resolveThemeData(currentTheme);
-      const availableNames = themeData?.schemes ? Object.keys(themeData.schemes) : [];
+      let themeData = getAvailableSchemes(storage, getMarketplaceExport(), currentTheme);
 
+      const availableNames = themeData?.schemes ? Object.keys(themeData.schemes) : [];
       const isDark = typeof overrideIsDark === "boolean" ? overrideIsDark : Boolean(mediaQuery.matches);
       const target = determineTargetScheme(settings, isDark, availableNames, currentTheme);
 
       if (target && themeData?.schemes?.[target]) {
         applyScheme(target, themeData.schemes[target], themeData.rawRecordKey);
+      } else if (availableNames.length === 0 && currentTheme) {
+        fetchRemoteSchemes(currentTheme).then((fetched) => {
+          if (fetched && target && fetched[target]) {
+            applyScheme(target, fetched[target], `spicetify-auto-theme-schemes:${currentTheme}`);
+          }
+        });
       }
     }
 
@@ -456,38 +500,59 @@
       evaluateAndApply(e?.matches);
     });
 
-    async function openModalHandler() {
-      const currentTheme = getCurrentThemeName();
-      const themeData = await resolveThemeData(currentTheme);
-      const schemes = themeData?.schemes ? Object.keys(themeData.schemes) : [];
+    // Synchronous, instant click handler
+    function openModalHandler() {
+      try {
+        const currentTheme = getCurrentThemeName();
+        let themeData = getAvailableSchemes(storage, getMarketplaceExport(), currentTheme);
+        let schemes = themeData?.schemes ? Object.keys(themeData.schemes) : [];
 
-      const activeThemeConfig = settings.themeMappings?.[currentTheme] || {
-        darkScheme: settings.darkScheme,
-        lightScheme: settings.lightScheme
-      };
+        const activeThemeConfig = settings.themeMappings?.[currentTheme] || {
+          darkScheme: settings.darkScheme,
+          lightScheme: settings.lightScheme
+        };
 
-      openSettingsModal({
-        themeName: currentTheme,
-        schemes,
-        currentSettings: {
-          enabled: settings.enabled,
-          darkScheme: activeThemeConfig.darkScheme,
-          lightScheme: activeThemeConfig.lightScheme
-        },
-        onSave: (newFormValues) => {
-          settings.enabled = newFormValues.enabled;
-          if (!settings.themeMappings) settings.themeMappings = {};
-          settings.themeMappings[currentTheme] = {
-            darkScheme: newFormValues.darkScheme,
-            lightScheme: newFormValues.lightScheme
-          };
-          settings.darkScheme = newFormValues.darkScheme;
-          settings.lightScheme = newFormValues.lightScheme;
+        openSettingsModal({
+          themeName: currentTheme,
+          schemes,
+          currentSettings: {
+            enabled: settings.enabled,
+            darkScheme: activeThemeConfig.darkScheme,
+            lightScheme: activeThemeConfig.lightScheme
+          },
+          onSave: (newFormValues) => {
+            settings.enabled = newFormValues.enabled;
+            if (!settings.themeMappings) settings.themeMappings = {};
+            settings.themeMappings[currentTheme] = {
+              darkScheme: newFormValues.darkScheme,
+              lightScheme: newFormValues.lightScheme
+            };
+            settings.darkScheme = newFormValues.darkScheme;
+            settings.lightScheme = newFormValues.lightScheme;
 
-          saveSettings(storage, settings);
-          evaluateAndApply();
+            saveSettings(storage, settings);
+            evaluateAndApply();
+          }
+        });
+
+        // Background non-blocking fetch to populate datalists if empty
+        if (schemes.length === 0 && currentTheme && currentTheme !== "marketplace" && currentTheme !== "Default") {
+          fetchRemoteSchemes(currentTheme).then((fetched) => {
+            if (fetched) {
+              const darkList = doc.getElementById("auto-theme-dark-list");
+              const lightList = doc.getElementById("auto-theme-light-list");
+              const options = Object.keys(fetched).map((s) => `<option value="${s}">`).join("\n");
+              if (darkList) darkList.innerHTML = options;
+              if (lightList) lightList.innerHTML = options;
+            }
+          }).catch(() => {});
         }
-      });
+      } catch (err) {
+        console.error("[Auto-Theme] Error opening modal:", err);
+        if (Spicetify.showNotification) {
+          Spicetify.showNotification("Auto Theme error: " + err.message, true);
+        }
+      }
     }
 
     // 1. Topbar Button (Always visible on Spotify top navigation bar!)

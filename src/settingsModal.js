@@ -1,5 +1,5 @@
 /**
- * Generates the inner HTML structure for the Auto Theme Settings modal.
+ * Generates the inner HTML structure for the Auto Theme Settings modal form.
  *
  * @param {{ themeName: string, schemes: string[], settings: { enabled: boolean, darkScheme: string, lightScheme: string } }} param0
  * @returns {string}
@@ -16,9 +16,9 @@ export function generateModalHTML({ themeName, schemes, settings }) {
   const isChecked = settings.enabled ? " checked" : "";
 
   return `
-<div class="auto-theme-modal-container" style="display:flex; flex-direction:column; gap:20px; padding:10px 0; color:var(--spice-text, #ffffff); font-family:var(--font-family, sans-serif);">
+<div class="auto-theme-modal-container" style="display:flex; flex-direction:column; gap:20px; color:var(--spice-text, #ffffff); font-family:var(--font-family, sans-serif);">
   <div style="border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:12px;">
-    <h2 style="font-size:22px; font-weight:700; margin:0 0 6px 0;">Auto Theme Settings</h2>
+    <h2 style="font-size:20px; font-weight:700; margin:0 0 4px 0;">Auto Theme Settings</h2>
     <p style="font-size:13px; color:var(--spice-subtext, #a7a7a7); margin:0;">
       Automatically switch between dark and light color schemes based on your system appearance.
     </p>
@@ -84,7 +84,8 @@ export function parseModalFormValues(values) {
 }
 
 /**
- * Opens the settings modal in the Spicetify client.
+ * Opens the settings modal in the Spicetify client using a bulletproof,
+ * self-contained fixed overlay.
  *
  * @param {{
  *   themeName: string,
@@ -94,23 +95,78 @@ export function parseModalFormValues(values) {
  * }} config
  */
 export function openSettingsModal({ themeName, schemes, currentSettings, onSave }) {
-  if (typeof Spicetify === "undefined" || !Spicetify.PopupModal) {
-    console.warn("[Auto-Theme] Spicetify.PopupModal is not available");
-    return;
-  }
+  if (typeof document === "undefined") return;
 
-  const container = document.createElement("div");
-  container.innerHTML = generateModalHTML({
-    themeName,
-    schemes,
-    settings: currentSettings
+  // 1. Remove existing modal if already open
+  const existing = document.getElementById("spicetify-auto-theme-modal");
+  if (existing) existing.remove();
+
+  // 2. Create the fixed overlay container
+  const overlay = document.createElement("div");
+  overlay.id = "spicetify-auto-theme-modal";
+  overlay.style.cssText = `
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    z-index: 999999 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    background: rgba(0, 0, 0, 0.75) !important;
+    backdrop-filter: blur(6px) !important;
+    font-family: var(--font-family, sans-serif) !important;
+  `;
+
+  // 3. Create the card
+  const card = document.createElement("div");
+  card.style.cssText = `
+    background: var(--spice-player, var(--background-elevated-base, #181818)) !important;
+    color: var(--spice-text, #ffffff) !important;
+    width: 520px !important;
+    max-width: 90vw !important;
+    max-height: 85vh !important;
+    border-radius: 12px !important;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.8) !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    position: relative !important;
+    padding: 24px !important;
+    box-sizing: border-box !important;
+  `;
+
+  card.innerHTML = `
+    <div style="display:flex; justify-content:flex-end; margin-bottom:-20px; z-index:1;">
+      <button id="auto-theme-close-btn" style="background:transparent; border:none; color:var(--spice-subtext, #a7a7a7); cursor:pointer; font-size:18px; line-height:1; padding:6px; border-radius:50%;">✕</button>
+    </div>
+    ${generateModalHTML({ themeName, schemes, settings: currentSettings })}
+  `;
+
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+
+  // Close handlers
+  const closeModal = () => overlay.remove();
+  card.querySelector("#auto-theme-close-btn")?.addEventListener("click", closeModal);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) closeModal();
   });
+  const onKeyDown = (e) => {
+    if (e.key === "Escape") {
+      closeModal();
+      document.removeEventListener("keydown", onKeyDown);
+    }
+  };
+  document.addEventListener("keydown", onKeyDown);
 
-  const enabledInput = container.querySelector("#auto-theme-enabled");
-  const darkInput = container.querySelector("#auto-theme-dark-scheme");
-  const lightInput = container.querySelector("#auto-theme-light-scheme");
-  const saveBtn = container.querySelector("#auto-theme-save-btn");
-  const slider = container.querySelector(".auto-theme-slider");
+  // Form handling
+  const enabledInput = card.querySelector("#auto-theme-enabled");
+  const darkInput = card.querySelector("#auto-theme-dark-scheme");
+  const lightInput = card.querySelector("#auto-theme-light-scheme");
+  const saveBtn = card.querySelector("#auto-theme-save-btn");
+  const slider = card.querySelector(".auto-theme-slider");
 
   if (enabledInput && slider) {
     enabledInput.addEventListener("change", () => {
@@ -132,16 +188,10 @@ export function openSettingsModal({ themeName, schemes, currentSettings, onSave 
         onSave(newSettings);
       }
 
-      Spicetify.PopupModal.hide();
-      if (Spicetify.showNotification) {
+      closeModal();
+      if (typeof Spicetify !== "undefined" && Spicetify.showNotification) {
         Spicetify.showNotification(`Auto Theme: Settings saved for ${themeName || "theme"}`);
       }
     });
   }
-
-  Spicetify.PopupModal.display({
-    title: "Spicetify Auto-Theme",
-    content: container,
-    isLarge: false
-  });
 }

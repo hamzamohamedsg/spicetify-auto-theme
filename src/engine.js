@@ -70,36 +70,22 @@ export function initAutoTheme(env = {}) {
     return null;
   }
 
-  async function resolveThemeData(themeName) {
-    // 1. Check local / marketplace storage
-    let themeData = getAvailableSchemes(storage, getMarketplaceExport(), themeName);
-    if (themeData && themeData.schemes && Object.keys(themeData.schemes).length > 0) {
-      return themeData;
-    }
-
-    // 2. If not found locally, try fetching color.ini from official spicetify-themes repository
-    if (fetchFn && themeName && themeName !== "marketplace" && themeName !== "Default") {
-      try {
-        const res = await fetchFn(`https://raw.githubusercontent.com/spicetify/spicetify-themes/master/${themeName}/color.ini`);
-        if (res && res.ok) {
-          const text = await res.text();
-          const parsedSchemes = parseColorIni(text);
-          if (parsedSchemes && Object.keys(parsedSchemes).length > 0) {
-            storage.setItem(`spicetify-auto-theme-schemes:${themeName}`, JSON.stringify(parsedSchemes));
-            return {
-              themeName,
-              schemes: parsedSchemes,
-              activeScheme: Object.keys(parsedSchemes)[0],
-              rawRecordKey: `spicetify-auto-theme-schemes:${themeName}`
-            };
-          }
+  async function fetchRemoteSchemes(themeName) {
+    if (!fetchFn || !themeName || themeName === "marketplace" || themeName === "Default") return null;
+    try {
+      const res = await fetchFn(`https://raw.githubusercontent.com/spicetify/spicetify-themes/master/${themeName}/color.ini`);
+      if (res && res.ok) {
+        const text = await res.text();
+        const parsed = parseColorIni(text);
+        if (parsed && Object.keys(parsed).length > 0) {
+          storage.setItem(`spicetify-auto-theme-schemes:${themeName}`, JSON.stringify(parsed));
+          return parsed;
         }
-      } catch (err) {
-        console.debug(`[Auto-Theme] Remote color.ini fetch skipped for ${themeName}:`, err.message);
       }
+    } catch (err) {
+      console.debug(`[Auto-Theme] Remote color.ini fetch skipped for ${themeName}:`, err.message);
     }
-
-    return themeData;
+    return null;
   }
 
   function applyScheme(schemeName, schemeColors, rawRecordKey) {
@@ -145,18 +131,25 @@ export function initAutoTheme(env = {}) {
     console.log(`[Auto-Theme] Switched color scheme to: ${schemeName}`);
   }
 
-  async function evaluateAndApply(overrideIsDark) {
+  function evaluateAndApply(overrideIsDark) {
     if (!settings.enabled) return;
 
     const currentTheme = getCurrentThemeName();
-    const themeData = await resolveThemeData(currentTheme);
-    const availableNames = themeData?.schemes ? Object.keys(themeData.schemes) : [];
+    let themeData = getAvailableSchemes(storage, getMarketplaceExport(), currentTheme);
 
+    const availableNames = themeData?.schemes ? Object.keys(themeData.schemes) : [];
     const isDark = typeof overrideIsDark === "boolean" ? overrideIsDark : Boolean(mediaQuery.matches);
     const target = determineTargetScheme(settings, isDark, availableNames, currentTheme);
 
     if (target && themeData?.schemes?.[target]) {
       applyScheme(target, themeData.schemes[target], themeData.rawRecordKey);
+    } else if (availableNames.length === 0 && currentTheme) {
+      // Trigger background scheme fetch if not yet known
+      fetchRemoteSchemes(currentTheme).then((fetched) => {
+        if (fetched && target && fetched[target]) {
+          applyScheme(target, fetched[target], `spicetify-auto-theme-schemes:${currentTheme}`);
+        }
+      });
     }
   }
 
@@ -166,43 +159,62 @@ export function initAutoTheme(env = {}) {
     evaluateAndApply(e?.matches);
   });
 
-  // Handler to open settings modal
-  async function openModalHandler() {
-    const currentTheme = getCurrentThemeName();
-    const themeData = await resolveThemeData(currentTheme);
-    const schemes = themeData?.schemes ? Object.keys(themeData.schemes) : [];
+  // Synchronous, non-blocking handler to open settings modal
+  function openModalHandler() {
+    try {
+      const currentTheme = getCurrentThemeName();
+      const themeData = getAvailableSchemes(storage, getMarketplaceExport(), currentTheme);
+      const schemes = themeData?.schemes ? Object.keys(themeData.schemes) : [];
 
-    // Get active theme settings or defaults
-    const activeThemeConfig = settings.themeMappings?.[currentTheme] || {
-      darkScheme: settings.darkScheme,
-      lightScheme: settings.lightScheme
-    };
+      const activeThemeConfig = settings.themeMappings?.[currentTheme] || {
+        darkScheme: settings.darkScheme,
+        lightScheme: settings.lightScheme
+      };
 
-    openSettingsModal({
-      themeName: currentTheme,
-      schemes,
-      currentSettings: {
-        enabled: settings.enabled,
-        darkScheme: activeThemeConfig.darkScheme,
-        lightScheme: activeThemeConfig.lightScheme
-      },
-      onSave: (newFormValues) => {
-        settings.enabled = newFormValues.enabled;
-        if (!settings.themeMappings) settings.themeMappings = {};
-        settings.themeMappings[currentTheme] = {
-          darkScheme: newFormValues.darkScheme,
-          lightScheme: newFormValues.lightScheme
-        };
-        settings.darkScheme = newFormValues.darkScheme;
-        settings.lightScheme = newFormValues.lightScheme;
+      openSettingsModal({
+        themeName: currentTheme,
+        schemes,
+        currentSettings: {
+          enabled: settings.enabled,
+          darkScheme: activeThemeConfig.darkScheme,
+          lightScheme: activeThemeConfig.lightScheme
+        },
+        onSave: (newFormValues) => {
+          settings.enabled = newFormValues.enabled;
+          if (!settings.themeMappings) settings.themeMappings = {};
+          settings.themeMappings[currentTheme] = {
+            darkScheme: newFormValues.darkScheme,
+            lightScheme: newFormValues.lightScheme
+          };
+          settings.darkScheme = newFormValues.darkScheme;
+          settings.lightScheme = newFormValues.lightScheme;
 
-        saveSettings(storage, settings);
-        evaluateAndApply();
+          saveSettings(storage, settings);
+          evaluateAndApply();
+        }
+      });
+
+      // Background non-blocking fetch to populate datalists if empty
+      if (schemes.length === 0 && currentTheme && currentTheme !== "marketplace" && currentTheme !== "Default") {
+        fetchRemoteSchemes(currentTheme).then((fetched) => {
+          if (fetched && typeof doc !== "undefined") {
+            const darkList = doc.getElementById("auto-theme-dark-list");
+            const lightList = doc.getElementById("auto-theme-light-list");
+            const options = Object.keys(fetched).map((s) => `<option value="${s}">`).join("\n");
+            if (darkList) darkList.innerHTML = options;
+            if (lightList) lightList.innerHTML = options;
+          }
+        }).catch(() => {});
       }
-    });
+    } catch (err) {
+      console.error("[Auto-Theme] Error opening modal:", err);
+      if (spicetify.showNotification) {
+        spicetify.showNotification("Auto Theme error: " + err.message, true);
+      }
+    }
   }
 
-  // 1. Register Topbar button (Always visible in Spotify top bar)
+  // 1. Topbar Button (Always visible on Spotify top navigation bar!)
   if (spicetify.Topbar && spicetify.Topbar.Button) {
     const iconSvg = '<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm0 13V2a6 6 0 1 1 0 12z"/></svg>';
     try {
@@ -218,7 +230,7 @@ export function initAutoTheme(env = {}) {
     }
   }
 
-  // 2. Register ContextMenuV2 item (matches modern Spotify profile widget)
+  // 2. ContextMenuV2 item (Matches modern Spotify profile widget)
   if (spicetify.ContextMenuV2 && spicetify.ContextMenuV2.Item) {
     try {
       new spicetify.ContextMenuV2.Item({
@@ -237,7 +249,7 @@ export function initAutoTheme(env = {}) {
     }
   }
 
-  // 3. Register Spicetify.Menu.Item (for older Spicetify clients)
+  // 3. Spicetify.Menu.Item (for older Spicetify clients)
   if (spicetify.Menu && spicetify.Menu.Item) {
     try {
       const menuItem = new spicetify.Menu.Item("Auto Theme Settings", false, () => openModalHandler());
@@ -255,6 +267,7 @@ export function initAutoTheme(env = {}) {
   return {
     getSettings: () => settings,
     evaluateAndApply,
+    openModalHandler,
     updateSettings: (newSettings) => {
       settings = newSettings;
       saveSettings(storage, settings);
