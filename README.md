@@ -15,7 +15,7 @@
 ---
 
 <p align="center">
-  <img src="preview.png" width="100%" alt="Auto Theme Switcher Preview">
+  <img src="assets/preview.png" width="100%" alt="Auto Theme Switcher Preview">
 </p>
 
 ---
