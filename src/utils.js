@@ -56,3 +56,42 @@ export function generateSchemeCSS(schemeColors, targetSelector = ":root") {
   lines.push("}");
   return lines.join("\n");
 }
+
+/**
+ * Parses INI text (such as Spicetify theme color.ini) into a dictionary of schemes.
+ *
+ * @param {string} iniText
+ * @returns {Record<string, Record<string, string>>}
+ */
+export function parseColorIni(iniText) {
+  if (!iniText || typeof iniText !== "string") {
+    return {};
+  }
+
+  const lines = iniText.split(/\r?\n/);
+  const sections = {};
+  let currentSection = null;
+
+  for (const rawLine of lines) {
+    const line = rawLine.replace(/[;#].*$/, "").trim();
+    if (!line) continue;
+
+    const sectionMatch = line.match(/^\[(.*)\]$/);
+    if (sectionMatch) {
+      currentSection = sectionMatch[1].trim();
+      sections[currentSection] = {};
+      continue;
+    }
+
+    if (currentSection && line.includes("=")) {
+      const [key, ...valParts] = line.split("=");
+      const cleanKey = key.trim();
+      const cleanVal = valParts.join("=").trim().replace(/^#/, "");
+      if (cleanKey && cleanVal) {
+        sections[currentSection][cleanKey] = cleanVal;
+      }
+    }
+  }
+
+  return sections;
+}

@@ -12,9 +12,11 @@ test("generateModalHTML includes theme title, toggle, and dropdown options", () 
   assert.match(html, /Auto Theme Settings/);
   assert.match(html, /StarryNight/);
   assert.match(html, /name="auto-theme-enabled"[^>]*checked/);
-  assert.match(html, /<option value="Base" selected>/);
-  assert.match(html, /<option value="Orange" selected>/);
+  assert.match(html, /<option value="Base">/);
+  assert.match(html, /<option value="Orange">/);
   assert.match(html, /<option value="Galaxy">/);
+  assert.match(html, /id="auto-theme-dark-scheme"[^>]*value="Base"/);
+  assert.match(html, /id="auto-theme-light-scheme"[^>]*value="Orange"/);
 });
 
 test("generateModalHTML handles unchecked toggle when disabled", () => {

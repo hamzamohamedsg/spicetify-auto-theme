@@ -54,6 +54,8 @@ test("integration: auto-theme engine reacts to matchMedia change events and sync
   });
 
   const menuItems = [];
+  const topbarButtons = [];
+  const contextMenuItems = [];
   const mockSpicetify = {
     LocalStorage: {
       get: (k) => localStorageStore[k] || null,
@@ -61,6 +63,21 @@ test("integration: auto-theme engine reacts to matchMedia change events and sync
     },
     Config: {
       color_scheme: "Base"
+    },
+    Topbar: {
+      Button: class {
+        constructor(label, icon, onClick) {
+          topbarButtons.push({ label, icon, onClick });
+        }
+      }
+    },
+    ContextMenuV2: {
+      Item: class {
+        constructor(opts) {
+          contextMenuItems.push(opts);
+        }
+        register() {}
+      }
     },
     Menu: {
       Item: class {
@@ -85,6 +102,7 @@ test("integration: auto-theme engine reacts to matchMedia change events and sync
     matchMedia: mockMatchMedia,
     spicetify: mockSpicetify
   });
+  await controller.evaluateAndApply();
 
   // Verify initial dark mode application
   assert.ok(controller, "Controller initialized");
@@ -98,6 +116,7 @@ test("integration: auto-theme engine reacts to matchMedia change events and sync
   assert.ok(mediaListener, "mediaListener was registered");
   currentMatches = false;
   mediaListener({ matches: false });
+  await controller.evaluateAndApply(false);
 
   // Verify dynamic update to Orange
   const updatedStyle = mockDocument.querySelector("style#spicetify-auto-theme");
@@ -108,4 +127,10 @@ test("integration: auto-theme engine reacts to matchMedia change events and sync
   // Verify Marketplace storage was updated
   const updatedRecord = JSON.parse(localStorageStore["marketplace:installed:spicetify/StarryNight/user.css"]);
   assert.strictEqual(updatedRecord.activeScheme, "Orange");
+
+  // Verify Topbar button and ContextMenuV2 items were registered
+  assert.strictEqual(topbarButtons.length, 1);
+  assert.strictEqual(topbarButtons[0].label, "Auto Theme Settings");
+  assert.strictEqual(contextMenuItems.length, 1);
+  assert.strictEqual(contextMenuItems[0].children, "Auto Theme Settings");
 });

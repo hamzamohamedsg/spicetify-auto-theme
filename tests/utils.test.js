@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { hexToRGB, generateSchemeCSS } from "../src/utils.js";
+import { hexToRGB, generateSchemeCSS, parseColorIni } from "../src/utils.js";
 
 test("hexToRGB converts 6-character hex to comma-separated RGB", () => {
   assert.strictEqual(hexToRGB("FFFFFF"), "255,255,255");
@@ -29,4 +29,21 @@ test("generateSchemeCSS creates valid :root CSS custom properties", () => {
   assert.match(css, /--spice-rgb-text: 255,255,255;/);
   assert.ok(css.startsWith(":root {"));
   assert.ok(css.endsWith("}"));
+});
+
+test("parseColorIni parses sections and color keys with comments and whitespace", () => {
+  const ini = `
+[Dark]
+text = FFFFFF
+main = 121212 ; comment here
+
+[Light]
+text = 000000 # hash comment
+main = FFFFFF
+`;
+  const result = parseColorIni(ini);
+  assert.deepStrictEqual(result, {
+    Dark: { text: "FFFFFF", main: "121212" },
+    Light: { text: "000000", main: "FFFFFF" }
+  });
 });

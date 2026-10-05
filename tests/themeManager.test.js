@@ -10,7 +10,7 @@ import {
 test("loadSettings returns defaults when storage is empty", () => {
   const mockStorage = { getItem: () => null, setItem: () => {} };
   const settings = loadSettings(mockStorage);
-  assert.deepStrictEqual(settings, { enabled: true, darkScheme: "Base", lightScheme: "Orange" });
+  assert.deepStrictEqual(settings, { enabled: true, darkScheme: "Base", lightScheme: "Orange", themeMappings: {} });
 });
 
 test("saveSettings and loadSettings persist custom configuration", () => {
@@ -20,7 +20,7 @@ test("saveSettings and loadSettings persist custom configuration", () => {
     setItem: (k, v) => { store[k] = v; }
   };
   saveSettings(mockStorage, { enabled: false, darkScheme: "Dark", lightScheme: "Light" });
-  assert.deepStrictEqual(loadSettings(mockStorage), { enabled: false, darkScheme: "Dark", lightScheme: "Light" });
+  assert.deepStrictEqual(loadSettings(mockStorage), { enabled: false, darkScheme: "Dark", lightScheme: "Light", themeMappings: {} });
 });
 
 test("determineTargetScheme picks darkScheme when isDark is true", () => {
@@ -75,4 +75,27 @@ test("getAvailableSchemes returns null when no theme installed", () => {
   const mockStorage = { getItem: () => null };
   const result = getAvailableSchemes(mockStorage);
   assert.strictEqual(result, null);
+});
+
+test("determineTargetScheme uses per-theme mapping if defined for current theme", () => {
+  const settings = {
+    enabled: true,
+    darkScheme: "Base",
+    lightScheme: "Orange",
+    themeMappings: {
+      Comfy: { darkScheme: "SolDark", lightScheme: "Comfy" },
+      Fluent: { darkScheme: "dark", lightScheme: "light" }
+    }
+  };
+  const darkTarget = determineTargetScheme(settings, true, ["SolDark", "Comfy"], "Comfy");
+  assert.strictEqual(darkTarget, "SolDark");
+
+  const lightTarget = determineTargetScheme(settings, false, ["SolDark", "Comfy"], "Comfy");
+  assert.strictEqual(lightTarget, "Comfy");
+});
+
+test("determineTargetScheme returns desired scheme directly if availableSchemes is empty", () => {
+  const settings = { enabled: true, darkScheme: "MyCustomDark", lightScheme: "MyCustomLight" };
+  const target = determineTargetScheme(settings, true, []);
+  assert.strictEqual(target, "MyCustomDark");
 });

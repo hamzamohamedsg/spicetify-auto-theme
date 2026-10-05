@@ -5,14 +5,11 @@
  * @returns {string}
  */
 export function generateModalHTML({ themeName, schemes, settings }) {
-  const schemeList = schemes && schemes.length > 0 ? schemes : ["Base", "Orange"];
+  const schemeList = schemes && schemes.length > 0 ? schemes : [];
 
-  const buildOptions = (selected) => {
+  const buildDatalistOptions = () => {
     return schemeList
-      .map((s) => {
-        const isSelected = s === selected ? " selected" : "";
-        return `<option value="${s}"${isSelected}>${s}</option>`;
-      })
+      .map((s) => `<option value="${s}">`)
       .join("\n");
   };
 
@@ -23,17 +20,17 @@ export function generateModalHTML({ themeName, schemes, settings }) {
   <div style="border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:12px;">
     <h2 style="font-size:22px; font-weight:700; margin:0 0 6px 0;">Auto Theme Settings</h2>
     <p style="font-size:13px; color:var(--spice-subtext, #a7a7a7); margin:0;">
-      Automatically synchronize Spotify's appearance with your macOS Dark / Light mode.
+      Automatically switch between dark and light color schemes based on your system appearance.
     </p>
-    <div style="margin-top:8px; font-size:12px; opacity:0.8;">
-      Active Theme: <strong style="color:var(--spice-button, #1db954);">${themeName}</strong>
+    <div style="margin-top:8px; font-size:13px; opacity:0.9;">
+      Active Theme: <strong style="color:var(--spice-button, #1db954);">${themeName || "Default"}</strong>
     </div>
   </div>
 
   <div style="display:flex; align-items:center; justify-content:space-between;">
     <div>
       <div style="font-size:14px; font-weight:600;">Enable Automatic Switching</div>
-      <div style="font-size:12px; color:var(--spice-subtext, #a7a7a7);">Switch color schemes when your laptop changes appearance</div>
+      <div style="font-size:12px; color:var(--spice-subtext, #a7a7a7);">Switch color schemes when your system changes between Dark & Light</div>
     </div>
     <label style="position:relative; display:inline-block; width:44px; height:24px; cursor:pointer;">
       <input type="checkbox" id="auto-theme-enabled" name="auto-theme-enabled"${isChecked} style="opacity:0; width:0; height:0;">
@@ -46,24 +43,26 @@ export function generateModalHTML({ themeName, schemes, settings }) {
       <label for="auto-theme-dark-scheme" style="display:block; font-size:13px; font-weight:600; margin-bottom:6px;">
         Dark Mode Color Scheme:
       </label>
-      <select id="auto-theme-dark-scheme" style="width:100%; padding:10px 14px; border-radius:6px; background:rgba(255,255,255,0.1); color:var(--spice-text, #fff); border:1px solid rgba(255,255,255,0.2); font-size:14px; outline:none; cursor:pointer;">
-        ${buildOptions(settings.darkScheme)}
-      </select>
+      <input list="auto-theme-dark-list" id="auto-theme-dark-scheme" value="${settings.darkScheme || ""}" placeholder="Select or type scheme name (e.g. Base, Dark, Mocha)" style="width:100%; box-sizing:border-box; padding:10px 14px; border-radius:6px; background:rgba(255,255,255,0.1); color:var(--spice-text, #fff); border:1px solid rgba(255,255,255,0.2); font-size:14px; outline:none;">
+      <datalist id="auto-theme-dark-list">
+        ${buildDatalistOptions()}
+      </datalist>
     </div>
 
     <div>
       <label for="auto-theme-light-scheme" style="display:block; font-size:13px; font-weight:600; margin-bottom:6px;">
         Light Mode Color Scheme:
       </label>
-      <select id="auto-theme-light-scheme" style="width:100%; padding:10px 14px; border-radius:6px; background:rgba(255,255,255,0.1); color:var(--spice-text, #fff); border:1px solid rgba(255,255,255,0.2); font-size:14px; outline:none; cursor:pointer;">
-        ${buildOptions(settings.lightScheme)}
-      </select>
+      <input list="auto-theme-light-list" id="auto-theme-light-scheme" value="${settings.lightScheme || ""}" placeholder="Select or type scheme name (e.g. Orange, Light, Latte)" style="width:100%; box-sizing:border-box; padding:10px 14px; border-radius:6px; background:rgba(255,255,255,0.1); color:var(--spice-text, #fff); border:1px solid rgba(255,255,255,0.2); font-size:14px; outline:none;">
+      <datalist id="auto-theme-light-list">
+        ${buildDatalistOptions()}
+      </datalist>
     </div>
   </div>
 
   <div style="display:flex; justify-content:flex-end; gap:12px; margin-top:10px;">
     <button id="auto-theme-save-btn" style="padding:10px 22px; border-radius:500px; background:var(--spice-button, #1db954); color:#000; font-weight:700; border:none; cursor:pointer; font-size:14px;">
-      Save Changes
+      Save & Apply
     </button>
   </div>
 </div>
@@ -79,8 +78,8 @@ export function generateModalHTML({ themeName, schemes, settings }) {
 export function parseModalFormValues(values) {
   return {
     enabled: Boolean(values.enabled),
-    darkScheme: typeof values.darkScheme === "string" ? values.darkScheme.trim() : "Base",
-    lightScheme: typeof values.lightScheme === "string" ? values.lightScheme.trim() : "Orange"
+    darkScheme: typeof values.darkScheme === "string" && values.darkScheme.trim() ? values.darkScheme.trim() : "Base",
+    lightScheme: typeof values.lightScheme === "string" && values.lightScheme.trim() ? values.lightScheme.trim() : "Orange"
   };
 }
 
@@ -108,8 +107,8 @@ export function openSettingsModal({ themeName, schemes, currentSettings, onSave 
   });
 
   const enabledInput = container.querySelector("#auto-theme-enabled");
-  const darkSelect = container.querySelector("#auto-theme-dark-scheme");
-  const lightSelect = container.querySelector("#auto-theme-light-scheme");
+  const darkInput = container.querySelector("#auto-theme-dark-scheme");
+  const lightInput = container.querySelector("#auto-theme-light-scheme");
   const saveBtn = container.querySelector("#auto-theme-save-btn");
   const slider = container.querySelector(".auto-theme-slider");
 
@@ -125,8 +124,8 @@ export function openSettingsModal({ themeName, schemes, currentSettings, onSave 
     saveBtn.addEventListener("click", () => {
       const newSettings = parseModalFormValues({
         enabled: enabledInput ? enabledInput.checked : currentSettings.enabled,
-        darkScheme: darkSelect ? darkSelect.value : currentSettings.darkScheme,
-        lightScheme: lightSelect ? lightSelect.value : currentSettings.lightScheme
+        darkScheme: darkInput ? darkInput.value : currentSettings.darkScheme,
+        lightScheme: lightInput ? lightInput.value : currentSettings.lightScheme
       });
 
       if (typeof onSave === "function") {
@@ -135,7 +134,7 @@ export function openSettingsModal({ themeName, schemes, currentSettings, onSave 
 
       Spicetify.PopupModal.hide();
       if (Spicetify.showNotification) {
-        Spicetify.showNotification("Auto Theme settings saved!");
+        Spicetify.showNotification(`Auto Theme: Settings saved for ${themeName || "theme"}`);
       }
     });
   }
