@@ -14,6 +14,7 @@ test("auto-theme.js evaluates as valid JavaScript and registers cleanly", () => 
   const sandbox = {
     console,
     setTimeout: (fn, ms) => fn(),
+    setInterval: (fn, ms) => ({ unref: () => {} }),
     document: {
       body: {},
       head: { appendChild: () => {} },

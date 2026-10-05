@@ -15,6 +15,12 @@ test("integration: auto-theme engine reacts to matchMedia change events and sync
 
   localStorageStore["marketplace:theme-installed"] = "marketplace:installed:spicetify/StarryNight/user.css";
   localStorageStore["marketplace:installed:spicetify/StarryNight/user.css"] = JSON.stringify(themeRecord);
+  localStorageStore["spicetify-auto-theme:settings"] = JSON.stringify({
+    enabled: true,
+    mode: "system",
+    darkScheme: "Base",
+    lightScheme: "Orange"
+  });
 
   const styleElements = new Map();
   const mockDocument = {

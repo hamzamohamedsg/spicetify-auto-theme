@@ -3,7 +3,10 @@ import {
   loadSettings,
   saveSettings,
   getAvailableSchemes,
-  determineTargetScheme
+  determineTargetScheme,
+  isCurrentAppearanceDark,
+  getMarketplaceThemesFromIDB,
+  BUILTIN_THEME_CATALOG
 } from "./themeManager.js";
 import { openSettingsModal } from "./settingsModal.js";
 
@@ -14,7 +17,8 @@ import { openSettingsModal } from "./settingsModal.js";
  *   document?: Document,
  *   matchMedia?: (query: string) => MediaQueryList,
  *   spicetify?: typeof Spicetify,
- *   fetch?: typeof fetch
+ *   fetch?: typeof fetch,
+ *   indexedDB?: IDBFactory
  * }} env
  */
 export function initAutoTheme(env = {}) {
@@ -22,13 +26,14 @@ export function initAutoTheme(env = {}) {
   const mm = env.matchMedia || (typeof window !== "undefined" && window.matchMedia ? window.matchMedia.bind(window) : null);
   const spicetify = env.spicetify || (typeof Spicetify !== "undefined" ? Spicetify : null);
   const fetchFn = env.fetch || (typeof fetch !== "undefined" ? fetch.bind(globalThis) : null);
+  const idb = env.indexedDB || (typeof indexedDB !== "undefined" ? indexedDB : null);
 
   if (!doc || !mm || !spicetify) {
     console.warn("[Auto-Theme] Required environment APIs not available");
     return null;
   }
 
-  // Create an adapter for storage interface (getItem/setItem)
+  // Storage interface adapter
   const storage = {
     getItem: (key) => {
       try {
@@ -57,8 +62,20 @@ export function initAutoTheme(env = {}) {
   let settings = loadSettings(storage);
   const mediaQuery = mm("(prefers-color-scheme: dark)");
 
+  // State cache for installed themes
+  let idbThemes = {};
+  let currentlyAppliedDark = null;
+
   function getCurrentThemeName() {
-    return spicetify.Config?.current_theme || "Default";
+    const raw = spicetify.Config?.current_theme;
+    if (raw && raw !== "marketplace" && raw !== "Default") {
+      return raw;
+    }
+    const idbNames = Object.keys(idbThemes);
+    if (idbNames.length > 0) {
+      return idbNames[0];
+    }
+    return "StarryNight";
   }
 
   function getMarketplaceExport() {
@@ -84,6 +101,24 @@ export function initAutoTheme(env = {}) {
       }
     } catch (err) {
       console.debug(`[Auto-Theme] Remote color.ini fetch skipped for ${themeName}:`, err.message);
+    }
+    return null;
+  }
+
+  function resolveThemeData(themeName) {
+    if (idbThemes[themeName]) {
+      return idbThemes[themeName];
+    }
+    const fromStorage = getAvailableSchemes(storage, getMarketplaceExport(), themeName);
+    if (fromStorage) return fromStorage;
+
+    if (BUILTIN_THEME_CATALOG[themeName]) {
+      return {
+        themeName,
+        schemes: BUILTIN_THEME_CATALOG[themeName],
+        activeScheme: Object.keys(BUILTIN_THEME_CATALOG[themeName])[0] || "",
+        rawRecordKey: `builtin:${themeName}`
+      };
     }
     return null;
   }
@@ -132,19 +167,28 @@ export function initAutoTheme(env = {}) {
   }
 
   function evaluateAndApply(overrideIsDark) {
-    if (!settings.enabled) return;
+    if (!settings.enabled && typeof overrideIsDark !== "boolean") return;
 
     const currentTheme = getCurrentThemeName();
-    let themeData = getAvailableSchemes(storage, getMarketplaceExport(), currentTheme);
+    let themeData = resolveThemeData(currentTheme);
 
     const availableNames = themeData?.schemes ? Object.keys(themeData.schemes) : [];
-    const isDark = typeof overrideIsDark === "boolean" ? overrideIsDark : Boolean(mediaQuery.matches);
+
+    const isDark = typeof overrideIsDark === "boolean"
+      ? overrideIsDark
+      : isCurrentAppearanceDark({
+          mode: settings.mode,
+          scheduleStartHour: settings.scheduleStartHour,
+          scheduleEndHour: settings.scheduleEndHour,
+          matchMediaDark: Boolean(mediaQuery.matches)
+        });
+
+    currentlyAppliedDark = isDark;
     const target = determineTargetScheme(settings, isDark, availableNames, currentTheme);
 
     if (target && themeData?.schemes?.[target]) {
       applyScheme(target, themeData.schemes[target], themeData.rawRecordKey);
     } else if (availableNames.length === 0 && currentTheme) {
-      // Trigger background scheme fetch if not yet known
       fetchRemoteSchemes(currentTheme).then((fetched) => {
         if (fetched && target && fetched[target]) {
           applyScheme(target, fetched[target], `spicetify-auto-theme-schemes:${currentTheme}`);
@@ -153,18 +197,66 @@ export function initAutoTheme(env = {}) {
     }
   }
 
-  // Set up OS appearance change listener
+  // Check appearance periodically for time-based schedule switching
+  const scheduleInterval = setInterval(() => {
+    if (settings.enabled && (settings.mode === "schedule" || settings.mode === "custom")) {
+      evaluateAndApply();
+    }
+  }, 30000);
+  if (scheduleInterval && typeof scheduleInterval.unref === "function") {
+    scheduleInterval.unref();
+  }
+
+  // OS appearance change listener
   mediaQuery.addEventListener("change", (e) => {
     console.log(`[Auto-Theme] OS appearance change detected (isDark: ${e?.matches})`);
-    evaluateAndApply(e?.matches);
+    if (settings.mode === "system") {
+      evaluateAndApply(e?.matches);
+    }
   });
 
-  // Synchronous, non-blocking handler to open settings modal
+  // Query IndexedDB for installed marketplace themes
+  if (idb) {
+    getMarketplaceThemesFromIDB(idb).then((themes) => {
+      if (themes && Object.keys(themes).length > 0) {
+        idbThemes = themes;
+        evaluateAndApply();
+      }
+    }).catch(() => {});
+  }
+
+  // Quick toggle helper
+  function quickToggle() {
+    const nextIsDark = !currentlyAppliedDark;
+    evaluateAndApply(nextIsDark);
+    const currentTheme = getCurrentThemeName();
+    const themeConfig = settings.themeMappings?.[currentTheme] || settings;
+    const scheme = nextIsDark ? themeConfig.darkScheme : themeConfig.lightScheme;
+    if (spicetify.showNotification) {
+      spicetify.showNotification(`Auto Theme: Switched to ${nextIsDark ? "🌙 Dark" : "☀️ Light"} (${scheme})`);
+    }
+  }
+
+  // Synchronous, instant click handler to open settings modal
   function openModalHandler() {
     try {
       const currentTheme = getCurrentThemeName();
-      const themeData = getAvailableSchemes(storage, getMarketplaceExport(), currentTheme);
+      const themeData = resolveThemeData(currentTheme);
       const schemes = themeData?.schemes ? Object.keys(themeData.schemes) : [];
+
+      const availableThemes = Array.from(new Set([
+        ...Object.keys(idbThemes),
+        ...Object.keys(BUILTIN_THEME_CATALOG)
+      ]));
+
+      const allThemesSchemesMap = {};
+      for (const t of availableThemes) {
+        if (idbThemes[t]?.schemes) {
+          allThemesSchemesMap[t] = Object.keys(idbThemes[t].schemes);
+        } else if (BUILTIN_THEME_CATALOG[t]) {
+          allThemesSchemesMap[t] = Object.keys(BUILTIN_THEME_CATALOG[t]);
+        }
+      }
 
       const activeThemeConfig = settings.themeMappings?.[currentTheme] || {
         darkScheme: settings.darkScheme,
@@ -173,16 +265,26 @@ export function initAutoTheme(env = {}) {
 
       openSettingsModal({
         themeName: currentTheme,
+        availableThemes,
         schemes,
+        allThemesSchemesMap,
         currentSettings: {
           enabled: settings.enabled,
+          mode: settings.mode,
+          scheduleStartHour: settings.scheduleStartHour,
+          scheduleEndHour: settings.scheduleEndHour,
           darkScheme: activeThemeConfig.darkScheme,
           lightScheme: activeThemeConfig.lightScheme
         },
-        onSave: (newFormValues) => {
+        onSave: (newFormValues, chosenTheme) => {
           settings.enabled = newFormValues.enabled;
+          settings.mode = newFormValues.mode;
+          settings.scheduleStartHour = newFormValues.scheduleStartHour;
+          settings.scheduleEndHour = newFormValues.scheduleEndHour;
+
+          const targetTheme = chosenTheme || currentTheme;
           if (!settings.themeMappings) settings.themeMappings = {};
-          settings.themeMappings[currentTheme] = {
+          settings.themeMappings[targetTheme] = {
             darkScheme: newFormValues.darkScheme,
             lightScheme: newFormValues.lightScheme
           };
@@ -191,21 +293,16 @@ export function initAutoTheme(env = {}) {
 
           saveSettings(storage, settings);
           evaluateAndApply();
+        },
+        onPreview: (previewDark, schemeName) => {
+          const tData = resolveThemeData(currentTheme);
+          if (tData?.schemes?.[schemeName]) {
+            applyScheme(schemeName, tData.schemes[schemeName], tData.rawRecordKey);
+          } else if (BUILTIN_THEME_CATALOG[currentTheme]?.[schemeName]) {
+            applyScheme(schemeName, BUILTIN_THEME_CATALOG[currentTheme][schemeName], `builtin:${currentTheme}`);
+          }
         }
       });
-
-      // Background non-blocking fetch to populate datalists if empty
-      if (schemes.length === 0 && currentTheme && currentTheme !== "marketplace" && currentTheme !== "Default") {
-        fetchRemoteSchemes(currentTheme).then((fetched) => {
-          if (fetched && typeof doc !== "undefined") {
-            const darkList = doc.getElementById("auto-theme-dark-list");
-            const lightList = doc.getElementById("auto-theme-light-list");
-            const options = Object.keys(fetched).map((s) => `<option value="${s}">`).join("\n");
-            if (darkList) darkList.innerHTML = options;
-            if (lightList) lightList.innerHTML = options;
-          }
-        }).catch(() => {});
-      }
     } catch (err) {
       console.error("[Auto-Theme] Error opening modal:", err);
       if (spicetify.showNotification) {
@@ -214,7 +311,7 @@ export function initAutoTheme(env = {}) {
     }
   }
 
-  // 1. Topbar Button (Always visible on Spotify top navigation bar!)
+  // 1. Topbar Button (Settings)
   if (spicetify.Topbar && spicetify.Topbar.Button) {
     const iconSvg = '<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm0 13V2a6 6 0 1 1 0 12z"/></svg>';
     try {
@@ -230,7 +327,7 @@ export function initAutoTheme(env = {}) {
     }
   }
 
-  // 2. ContextMenuV2 item (Matches modern Spotify profile widget)
+  // 2. ContextMenuV2 item
   if (spicetify.ContextMenuV2 && spicetify.ContextMenuV2.Item) {
     try {
       new spicetify.ContextMenuV2.Item({
@@ -249,7 +346,7 @@ export function initAutoTheme(env = {}) {
     }
   }
 
-  // 3. Spicetify.Menu.Item (for older Spicetify clients)
+  // 3. Spicetify.Menu.Item
   if (spicetify.Menu && spicetify.Menu.Item) {
     try {
       const menuItem = new spicetify.Menu.Item("Auto Theme Settings", false, () => openModalHandler());
@@ -267,7 +364,9 @@ export function initAutoTheme(env = {}) {
   return {
     getSettings: () => settings,
     evaluateAndApply,
+    quickToggle,
     openModalHandler,
+    destroy: () => clearInterval(scheduleInterval),
     updateSettings: (newSettings) => {
       settings = newSettings;
       saveSettings(storage, settings);

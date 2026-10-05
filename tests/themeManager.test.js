@@ -4,13 +4,15 @@ import {
   loadSettings,
   saveSettings,
   determineTargetScheme,
-  getAvailableSchemes
+  getAvailableSchemes,
+  isCurrentAppearanceDark,
+  DEFAULT_SETTINGS
 } from "../src/themeManager.js";
 
 test("loadSettings returns defaults when storage is empty", () => {
   const mockStorage = { getItem: () => null, setItem: () => {} };
   const settings = loadSettings(mockStorage);
-  assert.deepStrictEqual(settings, { enabled: true, darkScheme: "Base", lightScheme: "Orange", themeMappings: {} });
+  assert.deepStrictEqual(settings, DEFAULT_SETTINGS);
 });
 
 test("saveSettings and loadSettings persist custom configuration", () => {
@@ -20,7 +22,15 @@ test("saveSettings and loadSettings persist custom configuration", () => {
     setItem: (k, v) => { store[k] = v; }
   };
   saveSettings(mockStorage, { enabled: false, darkScheme: "Dark", lightScheme: "Light" });
-  assert.deepStrictEqual(loadSettings(mockStorage), { enabled: false, darkScheme: "Dark", lightScheme: "Light", themeMappings: {} });
+  assert.deepStrictEqual(loadSettings(mockStorage), {
+    enabled: false,
+    mode: "schedule",
+    scheduleStartHour: 7,
+    scheduleEndHour: 19,
+    darkScheme: "Dark",
+    lightScheme: "Light",
+    themeMappings: {}
+  });
 });
 
 test("determineTargetScheme picks darkScheme when isDark is true", () => {
@@ -99,3 +109,37 @@ test("determineTargetScheme returns desired scheme directly if availableSchemes 
   const target = determineTargetScheme(settings, true, []);
   assert.strictEqual(target, "MyCustomDark");
 });
+
+test("isCurrentAppearanceDark returns false during daytime when mode is schedule", () => {
+  const isDark = isCurrentAppearanceDark({
+    mode: "schedule",
+    scheduleStartHour: 7,
+    scheduleEndHour: 19,
+    currentHour: 8
+  });
+  assert.strictEqual(isDark, false);
+});
+
+test("isCurrentAppearanceDark returns true during nighttime when mode is schedule", () => {
+  const isDarkNight = isCurrentAppearanceDark({
+    mode: "schedule",
+    scheduleStartHour: 7,
+    scheduleEndHour: 19,
+    currentHour: 21
+  });
+  assert.strictEqual(isDarkNight, true);
+
+  const isDarkEarly = isCurrentAppearanceDark({
+    mode: "schedule",
+    scheduleStartHour: 7,
+    scheduleEndHour: 19,
+    currentHour: 5
+  });
+  assert.strictEqual(isDarkEarly, true);
+});
+
+test("isCurrentAppearanceDark respects system matchMedia when mode is system", () => {
+  assert.strictEqual(isCurrentAppearanceDark({ mode: "system", matchMediaDark: true }), true);
+  assert.strictEqual(isCurrentAppearanceDark({ mode: "system", matchMediaDark: false }), false);
+});
+

@@ -2,21 +2,22 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { generateModalHTML, parseModalFormValues } from "../src/settingsModal.js";
 
-test("generateModalHTML includes theme title, toggle, and dropdown options", () => {
+test("generateModalHTML includes theme title, toggle, and select dropdown options", () => {
   const html = generateModalHTML({
     themeName: "StarryNight",
     schemes: ["Base", "Orange", "Galaxy"],
-    settings: { enabled: true, darkScheme: "Base", lightScheme: "Orange" }
+    settings: { enabled: true, mode: "schedule", darkScheme: "Base", lightScheme: "Orange" }
   });
 
   assert.match(html, /Auto Theme Settings/);
   assert.match(html, /StarryNight/);
   assert.match(html, /name="auto-theme-enabled"[^>]*checked/);
-  assert.match(html, /<option value="Base">/);
-  assert.match(html, /<option value="Orange">/);
+  assert.match(html, /<select[^>]*id="auto-theme-dark-scheme"/);
+  assert.match(html, /<select[^>]*id="auto-theme-light-scheme"/);
+  assert.match(html, /<select[^>]*id="auto-theme-mode"/);
+  assert.match(html, /<option value="Base"[^>]*selected/);
+  assert.match(html, /<option value="Orange"[^>]*selected/);
   assert.match(html, /<option value="Galaxy">/);
-  assert.match(html, /id="auto-theme-dark-scheme"[^>]*value="Base"/);
-  assert.match(html, /id="auto-theme-light-scheme"[^>]*value="Orange"/);
 });
 
 test("generateModalHTML handles unchecked toggle when disabled", () => {
@@ -32,13 +33,20 @@ test("generateModalHTML handles unchecked toggle when disabled", () => {
 test("parseModalFormValues extracts updated settings from form inputs", () => {
   const values = parseModalFormValues({
     enabled: true,
+    mode: "schedule",
+    scheduleStartHour: 7,
+    scheduleEndHour: 19,
     darkScheme: "Base",
     lightScheme: "Orange"
   });
 
   assert.deepStrictEqual(values, {
     enabled: true,
+    mode: "schedule",
+    scheduleStartHour: 7,
+    scheduleEndHour: 19,
     darkScheme: "Base",
     lightScheme: "Orange"
   });
 });
+
