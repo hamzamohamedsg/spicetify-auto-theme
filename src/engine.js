@@ -200,19 +200,25 @@ export function initAutoTheme(env = {}) {
     }
   }
 
+  let isFetchingAppearance = false;
   async function checkOSAppearance() {
-    if (fetchFn) {
-      const detected = await fetchOSAppearance(fetchFn);
-      if (typeof detected === "boolean" && detected !== cachedOSAppearance) {
-        cachedOSAppearance = detected;
-        if (settings.mode === "system") {
-          evaluateAndApply();
+    if (fetchFn && !isFetchingAppearance) {
+      isFetchingAppearance = true;
+      try {
+        const detected = await fetchOSAppearance(fetchFn);
+        if (typeof detected === "boolean" && detected !== cachedOSAppearance) {
+          cachedOSAppearance = detected;
+          if (settings.mode === "system") {
+            evaluateAndApply();
+          }
         }
+      } finally {
+        isFetchingAppearance = false;
       }
     }
   }
 
-  // Periodic appearance check
+  // Periodic appearance check (low-latency 500ms check with near-zero CPU footprint)
   const appearanceCheckInterval = typeof setInterval !== "undefined"
     ? setInterval(() => {
         if (settings.enabled) {
@@ -222,15 +228,22 @@ export function initAutoTheme(env = {}) {
             evaluateAndApply();
           }
         }
-      }, 3000)
+      }, 500)
     : null;
   if (appearanceCheckInterval && typeof appearanceCheckInterval.unref === "function") {
     appearanceCheckInterval.unref();
   }
 
-  // Check appearance immediately on window focus
+  // Check appearance immediately on window focus and document visibilitychange
   if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
     window.addEventListener("focus", () => {
+      if (settings.enabled && settings.mode === "system") {
+        checkOSAppearance();
+      }
+    });
+  }
+  if (typeof doc !== "undefined" && typeof doc.addEventListener === "function") {
+    doc.addEventListener("visibilitychange", () => {
       if (settings.enabled && settings.mode === "system") {
         checkOSAppearance();
       }

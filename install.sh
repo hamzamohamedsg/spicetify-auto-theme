@@ -60,12 +60,27 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     if [ -d "$XPUI_DIR" ]; then
         mkdir -p "$SCRIPT_DIR/bin"
         if command -v clang >/dev/null 2>&1 && [ ! -f "$SCRIPT_DIR/bin/spicetify-theme-listener" ]; then
-            clang -O3 -framework Foundation -o "$SCRIPT_DIR/bin/spicetify-theme-listener" -x objective-c - << 'EOF'
+            if [ -f "$SCRIPT_DIR/bin/spicetify-theme-listener.m" ]; then
+                clang -O3 -framework Foundation -framework CoreFoundation -o "$SCRIPT_DIR/bin/spicetify-theme-listener" "$SCRIPT_DIR/bin/spicetify-theme-listener.m"
+            else
+                clang -O3 -framework Foundation -framework CoreFoundation -o "$SCRIPT_DIR/bin/spicetify-theme-listener" -x objective-c - << 'EOF'
 #import <Foundation/Foundation.h>
+#import <CoreFoundation/CoreFoundation.h>
 static void updateAppearance(NSString *path) {
-    NSDictionary *domain = [[NSUserDefaults standardUserDefaults] persistentDomainForName:@"kCFPreferencesAnyApplication"];
-    NSString *style = domain[@"AppleInterfaceStyle"];
-    BOOL isDark = [style isEqualToString:@"Dark"];
+    CFPreferencesSynchronize(CFSTR("kCFPreferencesAnyApplication"), kCFPreferencesCurrentUser, kCFPreferencesCurrentHost);
+    CFPropertyListRef val = CFPreferencesCopyValue(
+        CFSTR("AppleInterfaceStyle"),
+        CFSTR("kCFPreferencesAnyApplication"),
+        kCFPreferencesCurrentUser,
+        kCFPreferencesCurrentHost
+    );
+    BOOL isDark = NO;
+    if (val != NULL) {
+        if (CFGetTypeID(val) == CFStringGetTypeID()) {
+            isDark = [(__bridge NSString *)val isEqualToString:@"Dark"];
+        }
+        CFRelease(val);
+    }
     NSString *json = [NSString stringWithFormat:@"{\"appearance\":\"%s\",\"updated\":%ld}\n", isDark ? "dark" : "light", (long)[[NSDate date] timeIntervalSince1970]];
     [json writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
 }
@@ -84,6 +99,7 @@ int main(int argc, const char * argv[]) {
     return 0;
 }
 EOF
+            fi
         fi
         if [ -f "$SCRIPT_DIR/bin/spicetify-theme-listener" ]; then
             chmod +x "$SCRIPT_DIR/bin/spicetify-theme-listener"
