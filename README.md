@@ -6,11 +6,15 @@ A lightweight, zero-daemon [Spicetify](https://spicetify.app/) extension that au
 
 ## ✨ Features
 
-- **⚡ Instant Real-Time Switching**: Responds immediately when your OS switches between dark and light appearance (`prefers-color-scheme`).
+- **🌐 Truly Universal**: Works with **any Spicetify theme**—whether installed from the Marketplace, Spicetify Themes repository, or locally custom-built.
+- **⚡ Instant Real-Time Switching**: Responds immediately when your system switches between dark and light appearance (`prefers-color-scheme`).
 - **🎵 Zero Playback Interruption**: Updates colors dynamically in-place via DOM CSS custom properties (`--spice-*` and `--spice-rgb-*`). No Spotify reloads, page refreshes, or audio pauses.
-- **⚙️ In-App Settings UI**: Accessible directly from Spotify's Spicetify / Profile menu. Choose which scheme is dark and which is light for whatever theme you have installed.
-- **🎨 Works with Any Theme**: Whether you use **StarryNight** (`Base` for dark, `Orange` for light), **Comfy**, **Fluent**, **Sleek**, or any custom theme from the Marketplace.
-- **🔄 Marketplace Sync**: Updates Spicetify's active scheme record in local storage so the Marketplace UI stays synchronized.
+- **🔘 Top Bar Quick Access**: Adds a dedicated theme icon button directly to Spotify's top navigation bar for 1-click access to settings.
+- **⚙️ In-App Settings UI**:
+  - Automatically detects your currently active theme.
+  - Lists all available color schemes in selectable dropdowns.
+  - Allows freely typing **any custom scheme name** for full flexibility.
+  - Remembers dark and light preferences **per theme**.
 - **🪶 Zero Background Daemons**: Runs entirely within Spotify's CEF runtime. No battery-draining cron jobs, polling loops, or external helper apps.
 
 ---
@@ -44,30 +48,34 @@ cd spicetify-auto-theme
 ## 🛠️ Usage & Configuration
 
 1. Open **Spotify**.
-2. Click your **Profile icon** (top right) and select **Auto Theme Settings** (or access it from the Spicetify menu).
+2. Click the **Auto Theme button (contrast circle icon)** in the top navigation bar (or choose **Auto Theme Settings** from the profile menu).
 3. In the settings dialog:
-   - **Enable Auto Switch**: Turn automatic switching on or off.
-   - **Dark Mode Scheme**: Choose the color scheme for Dark mode (e.g., `Base` for StarryNight).
-   - **Light Mode Scheme**: Choose the color scheme for Light mode (e.g., `Orange` for StarryNight).
-4. Click **Save Settings**.
+   - View your currently active theme.
+   - Choose or type your desired **Dark Mode Color Scheme** (e.g. `Base`, `Dark`, `Mocha`, etc.).
+   - Choose or type your desired **Light Mode Color Scheme** (e.g. `Orange`, `Light`, `Latte`, etc.).
+   - Toggle **Enable Automatic Switching** on or off.
+4. Click **Save & Apply**.
 5. Switch your OS appearance in System Settings to see Spotify change colors instantly!
 
 ---
 
 ## 🔍 How It Works
 
-Spicetify themes define CSS custom properties on the `:root` element (e.g., `--spice-text`, `--spice-main`, `--spice-sidebar`, and their corresponding RGB equivalents `--spice-rgb-*`).
+Spicetify themes define CSS custom properties on the `:root` element (e.g., `--spice-text`, `--spice-main`, `--spice-sidebar`, and `--spice-rgb-*`).
 
 1. **Appearance Detection**: Listens to Chromium's native `window.matchMedia('(prefers-color-scheme: dark)')` event.
-2. **Scheme Resolution**: Retrieves available scheme definitions from Spicetify Marketplace's metadata cache.
-3. **Dynamic Style Injection**: Injects an overriding `<style id="spicetify-auto-theme-css">` with the targeted scheme's color definitions.
-4. **State Persistence**: Updates `localStorage['spicetify-auto-theme-settings']` and Spicetify's active scheme pointer.
+2. **Universal Scheme Discovery**:
+   - Queries Spicetify Marketplace's cache and exported theme records.
+   - Automatically fetches and parses `color.ini` from the Spicetify themes repository if needed.
+   - Falls back gracefully to user-specified custom scheme names.
+3. **Dynamic Style Injection**: Injects an overriding `<style id="spicetify-auto-theme">` tag with the target scheme's color definitions.
+4. **State Persistence**: Saves settings into local storage with per-theme mappings.
 
 ---
 
 ## 🧪 Testing
 
-The repository includes a comprehensive test suite covering color math, state management, modal generation, and live event integration:
+The repository includes a comprehensive test suite covering INI parsing, color conversion, state management, modal generation, and live event integration:
 
 ```bash
 npm test
