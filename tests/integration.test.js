@@ -103,12 +103,21 @@ test("integration: auto-theme engine reacts to matchMedia change events and sync
   // Import engine module
   const { initAutoTheme } = await import("../src/engine.js");
 
+  let currentOSAppearance = "dark";
+  const mockFetch = async (url) => {
+    if (url.includes("os-appearance.json")) {
+      return { ok: true, json: async () => ({ appearance: currentOSAppearance }) };
+    }
+    return { ok: false };
+  };
+
   const controller = initAutoTheme({
     document: mockDocument,
     matchMedia: mockMatchMedia,
-    spicetify: mockSpicetify
+    spicetify: mockSpicetify,
+    fetch: mockFetch
   });
-  await controller.evaluateAndApply();
+  await controller.evaluateAndApply(true);
 
   // Verify initial dark mode application
   assert.ok(controller, "Controller initialized");

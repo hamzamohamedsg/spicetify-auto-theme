@@ -301,15 +301,33 @@
     }
   };
 
+  async function fetchOSAppearance() {
+    try {
+      const res = await fetch("os-appearance.json?t=" + Date.now(), { cache: "no-store" });
+      if (res && res.ok) {
+        const data = await res.json();
+        if (data && typeof data.appearance === "string") {
+          return data.appearance.toLowerCase() === "dark";
+        }
+      }
+    } catch {}
+    return null;
+  }
+
   function isCurrentAppearanceDark({
-    mode = "schedule",
+    mode = "system",
+    osAppearanceDark = null,
     scheduleStartHour = 7,
     scheduleEndHour = 19,
     matchMediaDark = true,
     currentHour = (new Date()).getHours()
   } = {}) {
     if (mode === "system") {
-      return Boolean(matchMediaDark);
+      if (typeof osAppearanceDark === "boolean") {
+        return osAppearanceDark;
+      }
+      const isDaytime = currentHour >= scheduleStartHour && currentHour < scheduleEndHour;
+      return !isDaytime;
     }
     if (mode === "schedule" || mode === "custom") {
       const isDaytime = currentHour >= scheduleStartHour && currentHour < scheduleEndHour;
@@ -879,6 +897,7 @@
 
     let idbThemes = {};
     let currentlyAppliedDark = null;
+    let cachedOSAppearance = null;
 
     function getCurrentThemeName() {
       const raw = Spicetify.Config?.current_theme;
@@ -987,6 +1006,7 @@
         ? overrideIsDark
         : isCurrentAppearanceDark({
             mode: settings.mode,
+            osAppearanceDark: cachedOSAppearance,
             scheduleStartHour: settings.scheduleStartHour,
             scheduleEndHour: settings.scheduleEndHour,
             matchMediaDark: Boolean(mediaQuery.matches)
@@ -1006,19 +1026,42 @@
       }
     }
 
-    // Periodic time check for schedule auto-switching
-    const scheduleInterval = typeof setInterval !== "undefined"
-      ? setInterval(() => {
-          if (settings.enabled && (settings.mode === "schedule" || settings.mode === "custom")) {
-            evaluateAndApply();
-          }
-        }, 30000)
-      : null;
-    if (scheduleInterval && typeof scheduleInterval.unref === "function") {
-      scheduleInterval.unref();
+    async function checkOSAppearance() {
+      const detected = await fetchOSAppearance();
+      if (typeof detected === "boolean" && detected !== cachedOSAppearance) {
+        cachedOSAppearance = detected;
+        if (settings.mode === "system") {
+          evaluateAndApply();
+        }
+      }
     }
 
-    // OS appearance change listener
+    // Periodic appearance check
+    const appearanceCheckInterval = typeof setInterval !== "undefined"
+      ? setInterval(() => {
+          if (settings.enabled) {
+            if (settings.mode === "system") {
+              checkOSAppearance();
+            } else if (settings.mode === "schedule" || settings.mode === "custom") {
+              evaluateAndApply();
+            }
+          }
+        }, 3000)
+      : null;
+    if (appearanceCheckInterval && typeof appearanceCheckInterval.unref === "function") {
+      appearanceCheckInterval.unref();
+    }
+
+    // Check appearance immediately on window focus
+    if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+      window.addEventListener("focus", () => {
+        if (settings.enabled && settings.mode === "system") {
+          checkOSAppearance();
+        }
+      });
+    }
+
+    // OS appearance media query listener
     mediaQuery.addEventListener("change", (e) => {
       console.log(`[Auto-Theme] OS appearance change detected (isDark: ${e?.matches})`);
       if (settings.mode === "system") {
@@ -1183,8 +1226,8 @@
       }
     }
 
-    // Initial evaluation
-    evaluateAndApply();
+    // Initial evaluation with OS check
+    checkOSAppearance().then(() => evaluateAndApply()).catch(() => evaluateAndApply());
     console.log("[Auto-Theme] Extension successfully loaded and active.");
   }
 

@@ -232,14 +232,36 @@ export const BUILTIN_THEME_CATALOG = {
 };
 
 /**
+ * Fetches the active macOS appearance from the local bridge file os-appearance.json.
+ * Returns true if dark, false if light, or null if file is unreachable.
+ *
+ * @param {typeof fetch} [fetchFn]
+ * @returns {Promise<boolean|null>}
+ */
+export async function fetchOSAppearance(fetchFn = (typeof fetch !== "undefined" ? fetch : null)) {
+  if (!fetchFn) return null;
+  try {
+    const res = await fetchFn("os-appearance.json?t=" + Date.now(), { cache: "no-store" });
+    if (res && res.ok) {
+      const data = await res.json();
+      if (data && typeof data.appearance === "string") {
+        return data.appearance.toLowerCase() === "dark";
+      }
+    }
+  } catch {}
+  return null;
+}
+
+/**
  * Determines whether the current environment should be treated as Dark mode.
  * Supports:
+ * - "system": Real macOS appearance via os-appearance.json, falling back to daytime sun check.
  * - "schedule": Daytime (e.g. 07:00 to 19:00) is Light mode; Night is Dark mode.
- * - "system": Respects host matchMedia (prefers-color-scheme).
  * - "custom": Custom user-defined hours.
  *
  * @param {{
  *   mode?: string,
+ *   osAppearanceDark?: boolean|null,
  *   scheduleStartHour?: number,
  *   scheduleEndHour?: number,
  *   matchMediaDark?: boolean,
@@ -248,14 +270,21 @@ export const BUILTIN_THEME_CATALOG = {
  * @returns {boolean}
  */
 export function isCurrentAppearanceDark({
-  mode = "schedule",
+  mode = "system",
+  osAppearanceDark = null,
   scheduleStartHour = 7,
   scheduleEndHour = 19,
   matchMediaDark = true,
   currentHour = (typeof new Date().getHours === "function" ? new Date().getHours() : 12)
 } = {}) {
   if (mode === "system") {
-    return Boolean(matchMediaDark);
+    if (typeof osAppearanceDark === "boolean") {
+      return osAppearanceDark;
+    }
+    // Fallback: If os-appearance.json is not yet available, do not blindly trust
+    // CEF's forced dark matchMedia on macOS. Use daytime detection as safe fallback.
+    const isDaytime = currentHour >= scheduleStartHour && currentHour < scheduleEndHour;
+    return !isDaytime;
   }
   if (mode === "schedule" || mode === "custom") {
     const isDaytime = currentHour >= scheduleStartHour && currentHour < scheduleEndHour;

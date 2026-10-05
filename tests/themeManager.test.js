@@ -6,6 +6,7 @@ import {
   determineTargetScheme,
   getAvailableSchemes,
   isCurrentAppearanceDark,
+  fetchOSAppearance,
   DEFAULT_SETTINGS
 } from "../src/themeManager.js";
 
@@ -138,8 +139,35 @@ test("isCurrentAppearanceDark returns true during nighttime when mode is schedul
   assert.strictEqual(isDarkEarly, true);
 });
 
-test("isCurrentAppearanceDark respects system matchMedia when mode is system", () => {
-  assert.strictEqual(isCurrentAppearanceDark({ mode: "system", matchMediaDark: true }), true);
-  assert.strictEqual(isCurrentAppearanceDark({ mode: "system", matchMediaDark: false }), false);
+test("isCurrentAppearanceDark respects osAppearanceDark when mode is system", () => {
+  assert.strictEqual(isCurrentAppearanceDark({ mode: "system", osAppearanceDark: true }), true);
+  assert.strictEqual(isCurrentAppearanceDark({ mode: "system", osAppearanceDark: false }), false);
 });
+
+test("isCurrentAppearanceDark falls back to daytime check when mode is system and osAppearanceDark is null", () => {
+  assert.strictEqual(isCurrentAppearanceDark({ mode: "system", osAppearanceDark: null, currentHour: 12 }), false);
+  assert.strictEqual(isCurrentAppearanceDark({ mode: "system", osAppearanceDark: null, currentHour: 23 }), true);
+});
+
+test("fetchOSAppearance parses appearance json correctly", async () => {
+  const mockFetchLight = async () => ({
+    ok: true,
+    json: async () => ({ appearance: "light" })
+  });
+  const isDarkLight = await fetchOSAppearance(mockFetchLight);
+  assert.strictEqual(isDarkLight, false);
+
+  const mockFetchDark = async () => ({
+    ok: true,
+    json: async () => ({ appearance: "dark" })
+  });
+  const isDarkDark = await fetchOSAppearance(mockFetchDark);
+  assert.strictEqual(isDarkDark, true);
+
+  const mockFetchFail = async () => { throw new Error("404"); };
+  const isDarkFail = await fetchOSAppearance(mockFetchFail);
+  assert.strictEqual(isDarkFail, null);
+});
+
+
 

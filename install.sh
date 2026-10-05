@@ -53,16 +53,78 @@ fi
 cp "$SOURCE_FILE" "$EXT_DIR/auto-theme.js"
 echo "✅ Copied auto-theme.js to $EXT_DIR/auto-theme.js"
 
-# 5. Enable extension in Spicetify configuration
+# 5. On macOS, setup native appearance sync listener
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    echo "🍏 Setting up macOS Appearance Sync Listener..."
+    XPUI_DIR="/Applications/Spotify.app/Contents/Resources/Apps/xpui"
+    if [ -d "$XPUI_DIR" ]; then
+        mkdir -p "$SCRIPT_DIR/bin"
+        if command -v clang >/dev/null 2>&1 && [ ! -f "$SCRIPT_DIR/bin/spicetify-theme-listener" ]; then
+            clang -O3 -framework Foundation -o "$SCRIPT_DIR/bin/spicetify-theme-listener" -x objective-c - << 'EOF'
+#import <Foundation/Foundation.h>
+static void updateAppearance(NSString *path) {
+    NSDictionary *domain = [[NSUserDefaults standardUserDefaults] persistentDomainForName:@"kCFPreferencesAnyApplication"];
+    NSString *style = domain[@"AppleInterfaceStyle"];
+    BOOL isDark = [style isEqualToString:@"Dark"];
+    NSString *json = [NSString stringWithFormat:@"{\"appearance\":\"%s\",\"updated\":%ld}\n", isDark ? "dark" : "light", (long)[[NSDate date] timeIntervalSince1970]];
+    [json writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
+}
+int main(int argc, const char * argv[]) {
+    @autoreleasepool {
+        NSString *path = @"/Applications/Spotify.app/Contents/Resources/Apps/xpui/os-appearance.json";
+        updateAppearance(path);
+        [[NSDistributedNotificationCenter defaultCenter] addObserverForName:@"AppleInterfaceThemeChangedNotification"
+                                                                      object:nil
+                                                                       queue:[NSOperationQueue mainQueue]
+                                                                  usingBlock:^(NSNotification * _Nonnull note) {
+            updateAppearance(path);
+        }];
+        [[NSRunLoop currentRunLoop] run];
+    }
+    return 0;
+}
+EOF
+        fi
+        if [ -f "$SCRIPT_DIR/bin/spicetify-theme-listener" ]; then
+            chmod +x "$SCRIPT_DIR/bin/spicetify-theme-listener"
+            "$SCRIPT_DIR/bin/spicetify-theme-listener" &
+            LISTENER_INIT_PID=$!
+            sleep 0.2
+            kill $LISTENER_INIT_PID 2>/dev/null || true
+
+            mkdir -p "$HOME/Library/LaunchAgents"
+            cat << EOF > "$HOME/Library/LaunchAgents/com.spicetify.auto-theme-sync.plist"
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.spicetify.auto-theme-sync</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>$SCRIPT_DIR/bin/spicetify-theme-listener</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+</dict>
+</plist>
+EOF
+            launchctl unload "$HOME/Library/LaunchAgents/com.spicetify.auto-theme-sync.plist" 2>/dev/null || true
+            launchctl load "$HOME/Library/LaunchAgents/com.spicetify.auto-theme-sync.plist"
+            echo "✅ macOS appearance listener active (0% CPU, passive event observer)."
+        fi
+    fi
+fi
+
+# 6. Enable extension in Spicetify configuration
 if [ -n "$SPICETIFY_BIN" ]; then
     echo "⚙️  Enabling extension in Spicetify config..."
-    # Spicetify syntax: spicetify config extensions <ext> (or <ext>+ to append)
-    # Check if already present in config
     CURRENT_EXTS="$("$SPICETIFY_BIN" config extensions 2>/dev/null || true)"
     if echo "$CURRENT_EXTS" | grep -q "auto-theme.js"; then
         echo "ℹ️  Extension is already enabled in config."
     else
-        # Append extension
         "$SPICETIFY_BIN" config extensions auto-theme.js+ 2>/dev/null || "$SPICETIFY_BIN" config extensions auto-theme.js
         echo "✅ Added auto-theme.js to Spicetify extensions."
     fi

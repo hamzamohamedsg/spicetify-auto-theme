@@ -5,6 +5,7 @@ import {
   getAvailableSchemes,
   determineTargetScheme,
   isCurrentAppearanceDark,
+  fetchOSAppearance,
   getMarketplaceThemesFromIDB,
   BUILTIN_THEME_CATALOG
 } from "./themeManager.js";
@@ -62,9 +63,10 @@ export function initAutoTheme(env = {}) {
   let settings = loadSettings(storage);
   const mediaQuery = mm("(prefers-color-scheme: dark)");
 
-  // State cache for installed themes
+  // State cache for installed themes & OS appearance
   let idbThemes = {};
   let currentlyAppliedDark = null;
+  let cachedOSAppearance = null;
 
   function getCurrentThemeName() {
     const raw = spicetify.Config?.current_theme;
@@ -178,6 +180,7 @@ export function initAutoTheme(env = {}) {
       ? overrideIsDark
       : isCurrentAppearanceDark({
           mode: settings.mode,
+          osAppearanceDark: cachedOSAppearance,
           scheduleStartHour: settings.scheduleStartHour,
           scheduleEndHour: settings.scheduleEndHour,
           matchMediaDark: Boolean(mediaQuery.matches)
@@ -197,17 +200,44 @@ export function initAutoTheme(env = {}) {
     }
   }
 
-  // Check appearance periodically for time-based schedule switching
-  const scheduleInterval = setInterval(() => {
-    if (settings.enabled && (settings.mode === "schedule" || settings.mode === "custom")) {
-      evaluateAndApply();
+  async function checkOSAppearance() {
+    if (fetchFn) {
+      const detected = await fetchOSAppearance(fetchFn);
+      if (typeof detected === "boolean" && detected !== cachedOSAppearance) {
+        cachedOSAppearance = detected;
+        if (settings.mode === "system") {
+          evaluateAndApply();
+        }
+      }
     }
-  }, 30000);
-  if (scheduleInterval && typeof scheduleInterval.unref === "function") {
-    scheduleInterval.unref();
   }
 
-  // OS appearance change listener
+  // Periodic appearance check
+  const appearanceCheckInterval = typeof setInterval !== "undefined"
+    ? setInterval(() => {
+        if (settings.enabled) {
+          if (settings.mode === "system") {
+            checkOSAppearance();
+          } else if (settings.mode === "schedule" || settings.mode === "custom") {
+            evaluateAndApply();
+          }
+        }
+      }, 3000)
+    : null;
+  if (appearanceCheckInterval && typeof appearanceCheckInterval.unref === "function") {
+    appearanceCheckInterval.unref();
+  }
+
+  // Check appearance immediately on window focus
+  if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+    window.addEventListener("focus", () => {
+      if (settings.enabled && settings.mode === "system") {
+        checkOSAppearance();
+      }
+    });
+  }
+
+  // OS appearance media query listener (for Linux/Windows/CEF builds that support it)
   mediaQuery.addEventListener("change", (e) => {
     console.log(`[Auto-Theme] OS appearance change detected (isDark: ${e?.matches})`);
     if (settings.mode === "system") {
@@ -358,15 +388,17 @@ export function initAutoTheme(env = {}) {
     }
   }
 
-  // Initial evaluation
-  evaluateAndApply();
+  // Initial evaluation with OS check
+  checkOSAppearance().then(() => evaluateAndApply()).catch(() => evaluateAndApply());
 
   return {
     getSettings: () => settings,
     evaluateAndApply,
     quickToggle,
     openModalHandler,
-    destroy: () => clearInterval(scheduleInterval),
+    destroy: () => {
+      if (appearanceCheckInterval) clearInterval(appearanceCheckInterval);
+    },
     updateSettings: (newSettings) => {
       settings = newSettings;
       saveSettings(storage, settings);
