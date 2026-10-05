@@ -1,0 +1,11 @@
+{
+  "name": "spicetify-auto-theme",
+  "version": "1.0.0",
+  "description": "Automatic Dark/Light Mode Theme & Scheme Switcher for Spicetify",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  },
+  "author": "",
+  "license": "MIT"
+}
