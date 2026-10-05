@@ -1,0 +1,13 @@
+{
+  "name": "Auto Theme Switcher",
+  "description": "Automatically switches your Spotify theme between dark and light color schemes based on your system appearance.",
+  "main": "auto-theme.js",
+  "authors": [
+    {
+      "name": "mmtechstore",
+      "url": "https://github.com/mmtechstore"
+    }
+  ],
+  "preview": "",
+  "readme": "README.md"
+}
