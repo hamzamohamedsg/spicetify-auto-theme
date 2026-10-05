@@ -67,17 +67,15 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
 #import <Foundation/Foundation.h>
 #import <CoreFoundation/CoreFoundation.h>
 static void updateAppearance(NSString *path) {
-    CFPreferencesSynchronize(CFSTR("kCFPreferencesAnyApplication"), kCFPreferencesCurrentUser, kCFPreferencesCurrentHost);
-    CFPropertyListRef val = CFPreferencesCopyValue(
+    CFPreferencesAppSynchronize(kCFPreferencesAnyApplication);
+    CFPropertyListRef val = CFPreferencesCopyAppValue(
         CFSTR("AppleInterfaceStyle"),
-        CFSTR("kCFPreferencesAnyApplication"),
-        kCFPreferencesCurrentUser,
-        kCFPreferencesCurrentHost
+        kCFPreferencesAnyApplication
     );
     BOOL isDark = NO;
     if (val != NULL) {
         if (CFGetTypeID(val) == CFStringGetTypeID()) {
-            isDark = [(__bridge NSString *)val isEqualToString:@"Dark"];
+            isDark = [(__bridge NSString *)val caseInsensitiveCompare:@"Dark"] == NSOrderedSame;
         }
         CFRelease(val);
     }
@@ -93,6 +91,9 @@ int main(int argc, const char * argv[]) {
                                                                        queue:[NSOperationQueue mainQueue]
                                                                   usingBlock:^(NSNotification * _Nonnull note) {
             updateAppearance(path);
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(50 * NSEC_PER_MSEC)), dispatch_get_main_queue(), ^{
+                updateAppearance(path);
+            });
         }];
         [[NSRunLoop currentRunLoop] run];
     }
