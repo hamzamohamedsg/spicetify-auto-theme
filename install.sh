@@ -59,47 +59,10 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     XPUI_DIR="/Applications/Spotify.app/Contents/Resources/Apps/xpui"
     if [ -d "$XPUI_DIR" ]; then
         mkdir -p "$SCRIPT_DIR/bin"
-        if command -v clang >/dev/null 2>&1 && [ ! -f "$SCRIPT_DIR/bin/spicetify-theme-listener" ]; then
+        if command -v clang >/dev/null 2>&1; then
             if [ -f "$SCRIPT_DIR/bin/spicetify-theme-listener.m" ]; then
                 clang -O3 -framework Foundation -framework CoreFoundation -o "$SCRIPT_DIR/bin/spicetify-theme-listener" "$SCRIPT_DIR/bin/spicetify-theme-listener.m"
-            else
-                clang -O3 -framework Foundation -framework CoreFoundation -o "$SCRIPT_DIR/bin/spicetify-theme-listener" -x objective-c - << 'EOF'
-#import <Foundation/Foundation.h>
-#import <CoreFoundation/CoreFoundation.h>
-static void updateAppearance(NSString *path) {
-    CFPreferencesAppSynchronize(kCFPreferencesAnyApplication);
-    CFPropertyListRef val = CFPreferencesCopyAppValue(
-        CFSTR("AppleInterfaceStyle"),
-        kCFPreferencesAnyApplication
-    );
-    BOOL isDark = NO;
-    if (val != NULL) {
-        if (CFGetTypeID(val) == CFStringGetTypeID()) {
-            isDark = [(__bridge NSString *)val caseInsensitiveCompare:@"Dark"] == NSOrderedSame;
-        }
-        CFRelease(val);
-    }
-    NSString *json = [NSString stringWithFormat:@"{\"appearance\":\"%s\",\"updated\":%ld}\n", isDark ? "dark" : "light", (long)[[NSDate date] timeIntervalSince1970]];
-    [json writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
-}
-int main(int argc, const char * argv[]) {
-    @autoreleasepool {
-        NSString *path = @"/Applications/Spotify.app/Contents/Resources/Apps/xpui/os-appearance.json";
-        updateAppearance(path);
-        [[NSDistributedNotificationCenter defaultCenter] addObserverForName:@"AppleInterfaceThemeChangedNotification"
-                                                                      object:nil
-                                                                       queue:[NSOperationQueue mainQueue]
-                                                                  usingBlock:^(NSNotification * _Nonnull note) {
-            updateAppearance(path);
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(50 * NSEC_PER_MSEC)), dispatch_get_main_queue(), ^{
-                updateAppearance(path);
-            });
-        }];
-        [[NSRunLoop currentRunLoop] run];
-    }
-    return 0;
-}
-EOF
+                codesign -s - -f "$SCRIPT_DIR/bin/spicetify-theme-listener" 2>/dev/null || true
             fi
         fi
         if [ -f "$SCRIPT_DIR/bin/spicetify-theme-listener" ]; then
@@ -128,9 +91,9 @@ EOF
 </dict>
 </plist>
 EOF
-            launchctl unload "$HOME/Library/LaunchAgents/com.spicetify.auto-theme-sync.plist" 2>/dev/null || true
-            launchctl load "$HOME/Library/LaunchAgents/com.spicetify.auto-theme-sync.plist"
-            echo "✅ macOS appearance listener active (0% CPU, passive event observer)."
+            launchctl bootout "gui/$(id -u)/com.spicetify.auto-theme-sync" 2>/dev/null || launchctl unload "$HOME/Library/LaunchAgents/com.spicetify.auto-theme-sync.plist" 2>/dev/null || true
+            launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/com.spicetify.auto-theme-sync.plist" 2>/dev/null || launchctl load "$HOME/Library/LaunchAgents/com.spicetify.auto-theme-sync.plist"
+            echo "✅ macOS appearance listener active (0% CPU, passive event observer + heartbeat)."
         fi
     fi
 fi
